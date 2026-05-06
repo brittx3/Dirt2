@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>Nature Studio: Shared World</title>
+    <title>Nature Studio: Particle Fix</title>
     <script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>
     <style>
         :root { --accent: #7b5e43; --panel: rgba(255, 255, 255, 0.95); }
@@ -17,9 +17,10 @@
             display: flex; flex-direction: column; gap: 8px; width: 260px;
         }
         .palette-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 5px; }
-        .nature-btn { height: 32px; border: none; border-radius: 6px; cursor: pointer; font-size: 10px; color: white; font-weight: bold; }
+        .nature-btn { height: 32px; border: none; border-radius: 6px; cursor: pointer; font-size: 10px; color: white; font-weight: bold; transition: 0.2s; }
+        .nature-btn:hover { filter: brightness(1.1); }
         .earth { background: #8d6e63; } .wood { background: #5d4037; }
-        .mountain { background: #90a4ae; } .tree { background: #2e7d32; }
+        .mountain { background: #90a4ae; } .tree { background: #2e7d32; border: 2px solid #1b5e20; }
         .water { background: #0288d1; } .grass { background: #66bb6a; }
         .sand { background: #ffd54f; } .lava { background: #ff7043; } .fire { background: #ff5722; }
         .tool-btn { flex: 1; padding: 8px; border: 1px solid #ddd; border-radius: 8px; background: #f9f9f9; cursor: pointer; font-size: 11px; }
@@ -32,7 +33,7 @@
 <div id="controls">
     <div id="my-id-display" style="font-size:11px; color:#4a4a4a; font-weight:bold;">Your ID: Loading...</div>
     <div style="display:flex; gap:5px;">
-        <input type="text" id="peer-id-input" style="flex:1; padding:6px; border:1px solid #ddd; border-radius:5px; font-size:11px;" placeholder="Partner's ID">
+        <input type="text" id="peer-id-input" style="flex:1; padding:6px; border:1px solid #ddd; border-radius:5px; font-size:11px;" placeholder="Andrey's ID">
         <button onclick="connectToPeer()" style="padding:6px 10px; background:#4a4a4a; color:white; border:none; border-radius:5px; cursor:pointer; font-size:11px;">Join</button>
     </div>
 
@@ -110,14 +111,26 @@
     peer.on('connection', (c) => { 
         conn = c; 
         conn.on('data', d => { if(grid[d.x]) grid[d.x][d.y] = d.v; });
-        alert("Andrey has joined!");
     });
 
     function connectToPeer() { 
-        const id = document.getElementById('peer-id-input').value;
-        conn = peer.connect(id); 
-        conn.on('open', () => alert("Connected to Andrey's World!"));
+        conn = peer.connect(document.getElementById('peer-id-input').value); 
         conn.on('data', d => { if(grid[d.x]) grid[d.x][d.y] = d.v; });
+    }
+
+    function growTree(startX, startY) {
+        let h = 6 + Math.floor(Math.random() * 8);
+        for (let i = 0; i < h; i++) if (startY - i > 0) grid[startX][startY - i] = '#3e2723';
+        for (let ox = -3; ox <= 3; ox++) {
+            for (let oy = -4; oy <= 1; oy++) {
+                let tx = startX + ox, ty = startY - h + oy;
+                if (tx >= 0 && tx < width && ty > 0 && Math.random() > 0.3) {
+                    let leaf = colors.tree[Math.floor(Math.random()*2)];
+                    grid[tx][ty] = leaf;
+                    if (conn) conn.send({ x: tx, y: ty, v: leaf });
+                }
+            }
+        }
     }
 
     function draw() {
@@ -127,11 +140,16 @@
         for (let x = 0; x < width; x++) {
             for (let y = height - 1; y >= 0; y--) {
                 let type = grid[x][y]; if (type === 0) continue;
+                
                 let isWater = colors.water.includes(type), isLava = colors.lava.includes(type);
-                let isFire = colors.fire.includes(type), isWood = colors.wood.includes(type);
-                let isPlant = colors.tree.includes(type) || colors.grass.includes(type) || type === '#5D4037';
-                let isStatic = isWood || colors.mountain.includes(type) || isPlant;
+                let isFire = colors.fire.includes(type), isWood = colors.wood.includes(type) || type === '#3e2723';
+                let isStone = colors.mountain.includes(type);
+                let isPlant = colors.tree.includes(type) || colors.grass.includes(type);
+                
+                // PHYSICS CHECK
+                if (isWood || isStone || type === '#3e2723') continue; 
 
+                // LAVA & FIRE LOGIC
                 if (isFire || isLava) {
                     if (Math.random() < 0.05) smokeParticles.push({x: x*cellSize, y: y*cellSize, vx: (Math.random()-0.5), vy: -1, life: 1.0});
                     [[-1,0],[1,0],[0,-1],[0,1]].forEach(([ox, oy]) => {
@@ -146,10 +164,10 @@
                             }
                         }
                     });
-                    if (isFire && Math.random() < 0.01) nextGrid[x][y] = 0;
+                    if (isFire && Math.random() < 0.02) nextGrid[x][y] = 0;
                 }
 
-                if (isStatic) continue;
+                // MOVEMENT
                 if (y < height - 1) {
                     if (grid[x][y+1] === 0) {
                         nextGrid[x][y+1] = type; nextGrid[x][y] = 0;
@@ -177,11 +195,10 @@
 
         smokeParticles.forEach((p, i) => {
             p.x += p.vx; p.y += p.vy; p.life -= 0.01;
-            ctx.fillStyle = `rgba(100,100,100,${p.life})`;
-            ctx.fillRect(p.x, p.y, cellSize * 0.8, cellSize * 0.8);
+            ctx.fillStyle = `rgba(120,120,120,${p.life})`;
+            ctx.fillRect(p.x, p.y, cellSize, cellSize);
             if (p.life <= 0) smokeParticles.splice(i, 1);
         });
-
         requestAnimationFrame(draw);
     }
 
@@ -190,8 +207,9 @@
             let x = Math.floor(e.clientX / cellSize), y = Math.floor(e.clientY / cellSize);
             if (x >= 0 && x < width && y >= 0 && y < height) {
                 if (currentTool === 'dig') { grid[x][y] = 0; }
+                else if (currentElement === 'tree') { growTree(x, y); }
                 else {
-                    let v = colors[currentElement][Math.floor(Math.random()*2)];
+                    let v = colors[currentElement][Math.floor(Math.random()*colors[currentElement].length)];
                     grid[x][y] = v;
                     if (conn) conn.send({ x, y, v });
                 }
