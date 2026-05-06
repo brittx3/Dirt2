@@ -25,7 +25,6 @@
         .section-label { font-size: 10px; text-transform: uppercase; letter-spacing: 1.5px; color: #888; margin-bottom: 10px; display: block; }
         .grid-3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-bottom: 15px; }
         
-        /* New ID Box Styles */
         .id-container {
             background: #111; border: 1px solid #444; border-radius: 6px;
             padding: 8px; display: flex; align-items: center; justify-content: space-between;
@@ -80,6 +79,7 @@
         <button class="btn" onclick="setElement('wood')" style="border-left: 4px solid #5d4037">Wood</button>
         <button class="btn" onclick="setElement('mountain')" style="border-left: 4px solid #90a4ae">Stone</button>
         <button class="btn" onclick="setElement('grass')" style="border-left: 4px solid #66bb6a">Grass</button>
+        <button class="btn" onclick="setElement('flower')" style="border-left: 4px solid #f06292">Flower</button>
         <button class="btn" onclick="setElement('tree')" style="border-left: 4px solid #2e7d32">Sapling</button>
         <button class="btn" onclick="setElement('water')" style="border-left: 4px solid #0288d1">Water</button>
         <button class="btn" onclick="setElement('sand')" style="border-left: 4px solid #ffd54f">Sand</button>
@@ -101,6 +101,7 @@
         earth: ['#5d4037', '#8d6e63'], wood: ['#3e2723', '#4e342e'],
         mountain: ['#455a64', '#78909c'], tree: ['#1b5e20', '#388e3c'],
         water: ['#01579b', '#0288d1'], grass: ['#2e7d32', '#4caf50'],
+        flower: ['#f06292', '#ba68c8', '#ffd54f'],
         sand: ['#ff8f00', '#ffc107'], lava: ['#bf360c', '#e64a19'],
         fire: ['#ff5722', '#ffeb3b'], smoke: ['#666666']
     };
@@ -122,7 +123,6 @@
         setTimeout(() => btn.innerText = "COPY", 2000);
     }
 
-    // GAME ENGINE LOGIC
     function setTool(t) {
         currentTool = t;
         document.querySelectorAll('.btn').forEach(b => b.classList.remove('active'));
@@ -140,13 +140,8 @@
         })) : [];
     }
 
-    // NETWORK LAYER
     peer = new Peer();
-    peer.on('open', id => {
-        myId = id;
-        document.getElementById('my-id-display').innerText = id;
-    });
-    
+    peer.on('open', id => { myId = id; document.getElementById('my-id-display').innerText = id; });
     peer.on('connection', c => {
         conn = c;
         document.getElementById('conn-success').style.display = 'block';
@@ -156,9 +151,7 @@
     function connectToPeer() {
         const targetId = document.getElementById('peer-id-input').value;
         conn = peer.connect(targetId);
-        conn.on('open', () => {
-            document.getElementById('conn-success').style.display = 'block';
-        });
+        conn.on('open', () => { document.getElementById('conn-success').style.display = 'block'; });
         conn.on('data', d => { if(grid[d.x]) grid[d.x][d.y] = d.v; });
     }
 
@@ -167,21 +160,32 @@
         for (let x = 0; x < width; x++) {
             for (let y = height - 1; y >= 0; y--) {
                 let type = grid[x][y]; if (!type) continue;
+                
                 const isStatic = colors.wood.includes(type) || colors.tree.includes(type);
                 const isFluid = colors.water.includes(type) || colors.lava.includes(type);
                 const isFire = colors.fire.includes(type);
+                const isBurnable = colors.tree.includes(type) || colors.grass.includes(type) || colors.flower.includes(type) || colors.wood.includes(type);
+
                 if (isStatic) continue;
+
+                // Fire & Burning Logic
                 if (isFire || colors.lava.includes(type)) {
-                    if (Math.random() < 0.03) smoke.push({x: x*cellSize, y: y*cellSize, l: 1.0});
-                    [[-1,0],[1,0],[0,-1]].forEach(([ox, oy]) => {
+                    if (Math.random() < 0.04) smoke.push({x: x*cellSize, y: y*cellSize, l: 1.0});
+                    [[-1,0],[1,0],[0,-1],[0,1]].forEach(([ox, oy]) => {
                         let nx = x+ox, ny = y+oy;
                         if (nx>=0 && nx<width && ny>=0 && ny<height) {
-                            if ((colors.tree.includes(grid[nx][ny]) || colors.grass.includes(grid[nx][ny])) && Math.random() < 0.02)
+                            let target = grid[nx][ny];
+                            // If fire touches bio material, it turns into fire (burns it)
+                            if ((colors.tree.includes(target) || colors.grass.includes(target) || colors.flower.includes(target)) && Math.random() < 0.1) {
                                 next[nx][ny] = colors.fire[0];
+                            }
                         }
                     });
-                    if (isFire && Math.random() < 0.05) next[x][y] = 0;
+                    // Fire consumes itself/material over time
+                    if (isFire && Math.random() < 0.1) next[x][y] = 0;
                 }
+
+                // Gravity System
                 if (y < height - 1) {
                     if (!grid[x][y+1]) {
                         next[x][y+1] = type; next[x][y] = 0;
