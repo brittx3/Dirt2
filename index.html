@@ -7,7 +7,7 @@
     <script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>
     <style>
         :root { 
-            --ui-bg: rgba(20, 20, 20, 0.85);
+            --ui-bg: rgba(20, 20, 20, 0.9);
             --ui-border: #444;
             --accent: #2e7d32;
             --text: #eee;
@@ -24,6 +24,17 @@
         }
         .section-label { font-size: 10px; text-transform: uppercase; letter-spacing: 1.5px; color: #888; margin-bottom: 10px; display: block; }
         .grid-3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-bottom: 15px; }
+        
+        /* New ID Box Styles */
+        .id-container {
+            background: #111; border: 1px solid #444; border-radius: 6px;
+            padding: 8px; display: flex; align-items: center; justify-content: space-between;
+            margin-bottom: 10px;
+        }
+        #my-id-display { font-family: monospace; font-size: 12px; color: #4caf50; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .copy-btn { background: #444; color: white; border: none; padding: 4px 8px; border-radius: 4px; font-size: 10px; cursor: pointer; }
+        .copy-btn:active { background: #2e7d32; }
+
         .btn {
             background: #333; border: 1px solid var(--ui-border); color: white;
             padding: 8px; border-radius: 6px; cursor: pointer; font-size: 11px;
@@ -36,20 +47,25 @@
         #peer-id-input { background: #111; border: 1px solid #444; color: white; padding: 8px; border-radius: 6px; width: 60%; font-size: 11px; }
         
         canvas { display: block; background: linear-gradient(to bottom, #1e3c72, #2a5298); cursor: crosshair; }
-        .status-dot { height: 8px; width: 8px; border-radius: 50%; display: inline-block; background: #555; margin-right: 5px; }
-        .connected .status-dot { background: #4caf50; }
+        .connected-status { color: #4caf50; font-size: 10px; margin-top: 5px; display: none; }
     </style>
 </head>
 <body>
 
 <div id="hud">
-    <div class="connection-panel" id="conn-status">
-        <span class="section-label">Multiplayer Link</span>
-        <div id="my-id-display" style="font-size:10px; margin-bottom:8px; color: #aaa;">Status: Initializing...</div>
-        <div style="display:flex; gap:5px;">
-            <input type="text" id="peer-id-input" placeholder="Partner's ID">
-            <button class="btn" onclick="connectToPeer()" style="flex:1">Link</button>
+    <div class="connection-panel">
+        <span class="section-label">Your Connection ID</span>
+        <div class="id-container">
+            <span id="my-id-display">Generating...</span>
+            <button class="copy-btn" onclick="copyMyId()">COPY</button>
         </div>
+        
+        <span class="section-label">Link to Andrey</span>
+        <div style="display:flex; gap:5px;">
+            <input type="text" id="peer-id-input" placeholder="Paste Andrey's ID">
+            <button class="btn" onclick="connectToPeer()" style="flex:1">LINK</button>
+        </div>
+        <div id="conn-success" class="connected-status">✓ Connected to Partner</div>
     </div>
 
     <span class="section-label">Toolbox</span>
@@ -90,7 +106,7 @@
     };
 
     let width = 180, grid, cellSize, height, birds = [], smoke = [], birdsOn = false;
-    let currentElement = 'water', currentTool = 'pour', peer, conn;
+    let currentElement = 'water', currentTool = 'pour', peer, conn, myId = "";
 
     function setup() {
         canvas.width = window.innerWidth; canvas.height = window.innerHeight;
@@ -98,11 +114,20 @@
         grid = Array.from({ length: width }, () => new Array(height).fill(0));
     }
 
+    function copyMyId() {
+        if (!myId) return;
+        navigator.clipboard.writeText(myId);
+        const btn = document.querySelector('.copy-btn');
+        btn.innerText = "COPIED!";
+        setTimeout(() => btn.innerText = "COPY", 2000);
+    }
+
     // GAME ENGINE LOGIC
     function setTool(t) {
         currentTool = t;
         document.querySelectorAll('.btn').forEach(b => b.classList.remove('active'));
-        document.getElementById(t === 'pour' ? 'pourBtn' : 'digBtn').classList.add('active');
+        const btn = document.getElementById(t === 'pour' ? 'pourBtn' : 'digBtn');
+        if(btn) btn.classList.add('active');
     }
 
     function setElement(el) { currentElement = el; setTool('pour'); }
@@ -117,34 +142,35 @@
 
     // NETWORK LAYER
     peer = new Peer();
-    peer.on('open', id => document.getElementById('my-id-display').innerText = `ID: ${id}`);
+    peer.on('open', id => {
+        myId = id;
+        document.getElementById('my-id-display').innerText = id;
+    });
+    
     peer.on('connection', c => {
         conn = c;
-        document.getElementById('conn-status').classList.add('connected');
+        document.getElementById('conn-success').style.display = 'block';
         conn.on('data', d => { if(grid[d.x]) grid[d.x][d.y] = d.v; });
     });
 
     function connectToPeer() {
         const targetId = document.getElementById('peer-id-input').value;
         conn = peer.connect(targetId);
-        conn.on('open', () => document.getElementById('conn-status').classList.add('connected'));
+        conn.on('open', () => {
+            document.getElementById('conn-success').style.display = 'block';
+        });
         conn.on('data', d => { if(grid[d.x]) grid[d.x][d.y] = d.v; });
     }
 
     function update() {
         let next = grid.map(col => [...col]);
-
         for (let x = 0; x < width; x++) {
             for (let y = height - 1; y >= 0; y--) {
                 let type = grid[x][y]; if (!type) continue;
-
                 const isStatic = colors.wood.includes(type) || colors.tree.includes(type);
                 const isFluid = colors.water.includes(type) || colors.lava.includes(type);
                 const isFire = colors.fire.includes(type);
-
                 if (isStatic) continue;
-
-                // Fire & Lava Interaction
                 if (isFire || colors.lava.includes(type)) {
                     if (Math.random() < 0.03) smoke.push({x: x*cellSize, y: y*cellSize, l: 1.0});
                     [[-1,0],[1,0],[0,-1]].forEach(([ox, oy]) => {
@@ -156,8 +182,6 @@
                     });
                     if (isFire && Math.random() < 0.05) next[x][y] = 0;
                 }
-
-                // Gravity System
                 if (y < height - 1) {
                     if (!grid[x][y+1]) {
                         next[x][y+1] = type; next[x][y] = 0;
@@ -177,7 +201,6 @@
 
     function render() {
         ctx.fillStyle = '#1e3c72'; ctx.fillRect(0,0,canvas.width,canvas.height);
-
         for (let x = 0; x < width; x++) {
             for (let y = 0; y < height; y++) {
                 if (grid[x][y]) {
@@ -186,25 +209,22 @@
                 }
             }
         }
-
         smoke.forEach((s, i) => {
             s.y -= 1.5; s.l -= 0.01;
             ctx.fillStyle = `rgba(180,180,180,${s.l})`;
             ctx.fillRect(s.x, s.y, cellSize*2, cellSize*2);
             if(s.l <= 0) smoke.splice(i,1);
         });
-
         birds.forEach(b => {
             b.x += b.vx; b.y += b.vy; b.wing += 0.2;
             if(b.x < 0 || b.x > canvas.width) b.vx *= -1;
             if(b.y < 0 || b.y > canvas.height) b.vy *= -1;
             ctx.fillStyle = "white";
-            ctx.fillRect(b.x, b.y, 4, 2); // Body
+            ctx.fillRect(b.x, b.y, 4, 2);
             let wOff = Math.sin(b.wing) * 4;
-            ctx.fillRect(b.x-3, b.y+wOff, 3, 1); // Wings
+            ctx.fillRect(b.x-3, b.y+wOff, 3, 1);
             ctx.fillRect(b.x+4, b.y+wOff, 3, 1);
         });
-
         update();
         requestAnimationFrame(render);
     }
