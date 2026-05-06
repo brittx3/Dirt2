@@ -3,76 +3,111 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Nature Studio: Live Platformer</title>
+    <title>Nature Studio Pro</title>
     <script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>
     <style>
-        :root { --ui-bg: rgba(20, 20, 20, 0.9); --ui-border: #444; --accent: #2e7d32; --text: #eee; }
-        body { margin: 0; overflow: hidden; font-family: 'Segoe UI', sans-serif; background: #1a1a1a; color: var(--text); user-select: none; }
-        #hud { position: absolute; top: 20px; left: 20px; width: 280px; background: var(--ui-bg); backdrop-filter: blur(10px); border: 1px solid var(--ui-border); border-radius: 12px; padding: 20px; z-index: 100; box-shadow: 0 8px 32px rgba(0,0,0,0.5); }
+        :root { 
+            --ui-bg: rgba(20, 20, 20, 0.9);
+            --ui-border: #444;
+            --accent: #2e7d32;
+            --text: #eee;
+        }
+        body { 
+            margin: 0; overflow: hidden; font-family: 'Segoe UI', Tahoma, sans-serif; 
+            background: #1a1a1a; color: var(--text); user-select: none;
+        }
+        #hud {
+            position: absolute; top: 20px; left: 20px; width: 280px;
+            background: var(--ui-bg); backdrop-filter: blur(10px);
+            border: 1px solid var(--ui-border); border-radius: 12px;
+            padding: 20px; z-index: 100; box-shadow: 0 8px 32px rgba(0,0,0,0.5);
+        }
         .section-label { font-size: 10px; text-transform: uppercase; letter-spacing: 1.5px; color: #888; margin-bottom: 10px; display: block; }
         .grid-3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-bottom: 15px; }
-        .id-container { background: #111; border: 1px solid #444; border-radius: 6px; padding: 8px; display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px; }
-        #my-id-display { font-family: monospace; font-size: 12px; color: #4caf50; }
+        
+        .id-container {
+            background: #111; border: 1px solid #444; border-radius: 6px;
+            padding: 8px; display: flex; align-items: center; justify-content: space-between;
+            margin-bottom: 10px;
+        }
+        #my-id-display { font-family: monospace; font-size: 12px; color: #4caf50; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
         .copy-btn { background: #444; color: white; border: none; padding: 4px 8px; border-radius: 4px; font-size: 10px; cursor: pointer; }
-        .btn { background: #333; border: 1px solid var(--ui-border); color: white; padding: 8px; border-radius: 6px; cursor: pointer; font-size: 11px; transition: 0.2s; }
-        .btn.active { background: var(--accent); border-color: #4caf50; }
-        .char-select { display: flex; gap: 10px; margin-bottom: 15px; }
-        .char-btn { flex: 1; font-size: 20px; padding: 10px; background: #222; border: 2px solid #444; border-radius: 10px; cursor: pointer; }
-        .char-btn.selected { border-color: #ffd54f; background: #333; }
+        .copy-btn:active { background: #2e7d32; }
+
+        .btn {
+            background: #333; border: 1px solid var(--ui-border); color: white;
+            padding: 8px; border-radius: 6px; cursor: pointer; font-size: 11px;
+            transition: all 0.2s ease;
+        }
+        .btn:hover { background: #444; border-color: #666; }
+        .btn.active { background: var(--accent); border-color: #4caf50; box-shadow: 0 0 10px rgba(76, 175, 80, 0.4); }
+        
+        .connection-panel { margin-bottom: 20px; padding-bottom: 15px; border-bottom: 1px solid #333; }
+        #peer-id-input { background: #111; border: 1px solid #444; color: white; padding: 8px; border-radius: 6px; width: 60%; font-size: 11px; }
+        
         canvas { display: block; background: linear-gradient(to bottom, #1e3c72, #2a5298); cursor: crosshair; }
-        .hint { font-size: 9px; color: #666; margin-top: 10px; text-align: center; }
+        .connected-status { color: #4caf50; font-size: 10px; margin-top: 5px; display: none; }
     </style>
 </head>
 <body>
 
 <div id="hud">
-    <div class="id-container">
-        <span id="my-id-display">Connecting...</span>
-        <button class="copy-btn" onclick="copyId()">COPY</button>
-    </div>
-    
-    <div style="display:flex; gap:5px; margin-bottom:15px;">
-        <input type="text" id="peer-id-input" placeholder="Andrey's ID" style="flex:1; background:#111; border:1px solid #444; color:white; padding:8px; border-radius:6px; font-size:11px;">
-        <button class="btn" onclick="connectToPeer()">LINK</button>
+    <div class="connection-panel">
+        <span class="section-label">Your Connection ID</span>
+        <div class="id-container">
+            <span id="my-id-display">Generating...</span>
+            <button class="copy-btn" onclick="copyMyId()">COPY</button>
+        </div>
+        
+        <span class="section-label">Link to Andrey</span>
+        <div style="display:flex; gap:5px;">
+            <input type="text" id="peer-id-input" placeholder="Paste Andrey's ID">
+            <button class="btn" onclick="connectToPeer()" style="flex:1">LINK</button>
+        </div>
+        <div id="conn-success" class="connected-status">✓ Connected to Partner</div>
     </div>
 
-    <span class="section-label">Choose Your Character</span>
-    <div class="char-select">
-        <button class="char-btn" id="btn-cat" onclick="selectChar('🐱')">🐱</button>
-        <button class="char-btn" id="btn-dog" onclick="selectChar('🐶')">🐶</button>
+    <span class="section-label">Toolbox</span>
+    <div class="grid-3" style="grid-template-columns: 1fr 1fr; margin-bottom: 20px;">
+        <button id="pourBtn" class="btn active" onclick="setTool('pour')">POUR</button>
+        <button id="digBtn" class="btn" onclick="setTool('dig')">SHOVEL</button>
     </div>
 
     <span class="section-label">Materials</span>
     <div class="grid-3">
-        <button class="btn" onclick="setEl('wood')">Wood</button>
-        <button class="btn" onclick="setEl('tree')">Sapling</button>
-        <button class="btn" onclick="setEl('grass')">Grass</button>
-        <button class="btn" onclick="setEl('flower')">Flower</button>
-        <button class="btn" onclick="setEl('water')">Water</button>
-        <button class="btn" onclick="setEl('lava')">Lava</button>
+        <button class="btn" onclick="setElement('earth')" style="border-left: 4px solid #8d6e63">Earth</button>
+        <button class="btn" onclick="setElement('wood')" style="border-left: 4px solid #5d4037">Wood</button>
+        <button class="btn" onclick="setElement('mountain')" style="border-left: 4px solid #90a4ae">Stone</button>
+        <button class="btn" onclick="setElement('grass')" style="border-left: 4px solid #66bb6a">Grass</button>
+        <button class="btn" onclick="setElement('flower')" style="border-left: 4px solid #f06292">Flower</button>
+        <button class="btn" onclick="setElement('tree')" style="border-left: 4px solid #2e7d32">Sapling</button>
+        <button class="btn" onclick="setElement('water')" style="border-left: 4px solid #0288d1">Water</button>
+        <button class="btn" onclick="setElement('sand')" style="border-left: 4px solid #ffd54f">Sand</button>
+        <button class="btn" onclick="setElement('lava')" style="border-left: 4px solid #ff7043">Lava</button>
+        <button class="btn" onclick="setElement('fire')" style="border-left: 4px solid #ff5722">Fire</button>
     </div>
+
+    <span class="section-label">Simulation</span>
+    <button class="btn" style="width:100%; margin-bottom:8px;" onclick="toggleBirds()">TOGGLE BIRD AI</button>
     <button class="btn" style="width:100%; background:#833" onclick="resetCanvas()">PURGE WORLD</button>
-    <div class="hint">CONTROLS: ARROWS/WASD & SPACE (Double Jump)</div>
 </div>
 
 <canvas id="gameCanvas"></canvas>
 
 <script>
     const canvas = document.getElementById('gameCanvas');
-    const ctx = canvas.getContext('2d');
+    const ctx = canvas.getContext('2d', { alpha: false });
     const colors = {
-        wood: ['#3e2723'], tree: ['#1b5e20'], grass: ['#2e7d32'],
-        flower: ['#f06292', '#ba68c8'], water: ['#01579b'], lava: ['#bf360c'],
-        fire: ['#ff5722'], smoke: ['#666']
+        earth: ['#5d4037', '#8d6e63'], wood: ['#3e2723', '#4e342e'],
+        mountain: ['#455a64', '#78909c'], tree: ['#1b5e20', '#388e3c'],
+        water: ['#01579b', '#0288d1'], grass: ['#2e7d32', '#4caf50'],
+        flower: ['#f06292', '#ba68c8', '#ffd54f'],
+        sand: ['#ff8f00', '#ffc107'], lava: ['#bf360c', '#e64a19'],
+        fire: ['#ff5722', '#ffeb3b'], smoke: ['#666666']
     };
 
-    let width = 180, grid, cellSize, height, myId, peer, conn;
-    let currentElement = 'wood', birds = [], smoke = [];
-    
-    // Player Physics
-    let player = { x: 50, y: 50, vx: 0, vy: 0, char: '🐱', jumps: 0, w: 20, h: 20 };
-    let partner = { x: -100, y: -100, char: '🐶' };
-    const keys = {};
+    let width = 180, grid, cellSize, height, birds = [], smoke = [], birdsOn = false;
+    let currentElement = 'water', currentTool = 'pour', peer, conn, myId = "";
 
     function setup() {
         canvas.width = window.innerWidth; canvas.height = window.innerHeight;
@@ -80,84 +115,96 @@
         grid = Array.from({ length: width }, () => new Array(height).fill(0));
     }
 
-    function selectChar(c) {
-        player.char = c;
-        document.getElementById('btn-cat').classList.toggle('selected', c === '🐱');
-        document.getElementById('btn-dog').classList.toggle('selected', c === '🐶');
+    function copyMyId() {
+        if (!myId) return;
+        navigator.clipboard.writeText(myId);
+        const btn = document.querySelector('.copy-btn');
+        btn.innerText = "COPIED!";
+        setTimeout(() => btn.innerText = "COPY", 2000);
     }
 
-    function copyId() { navigator.clipboard.writeText(myId); }
+    function setTool(t) {
+        currentTool = t;
+        document.querySelectorAll('.btn').forEach(b => b.classList.remove('active'));
+        const btn = document.getElementById(t === 'pour' ? 'pourBtn' : 'digBtn');
+        if(btn) btn.classList.add('active');
+    }
+
+    function setElement(el) { currentElement = el; setTool('pour'); }
+
+    function toggleBirds() {
+        birdsOn = !birdsOn;
+        birds = birdsOn ? Array.from({length: 6}, () => ({
+            x: Math.random()*canvas.width, y: Math.random()*canvas.height, 
+            vx: Math.random()*4-2, vy: Math.random()*4-2, wing: 0
+        })) : [];
+    }
 
     peer = new Peer();
     peer.on('open', id => { myId = id; document.getElementById('my-id-display').innerText = id; });
     peer.on('connection', c => {
         conn = c;
-        conn.on('data', d => {
-            if (d.type === 'grid') grid[d.x][d.y] = d.v;
-            if (d.type === 'pos') { partner.x = d.x; partner.y = d.y; partner.char = d.char; }
-        });
+        document.getElementById('conn-success').style.display = 'block';
+        conn.on('data', d => { if(grid[d.x]) grid[d.x][d.y] = d.v; });
     });
 
     function connectToPeer() {
-        conn = peer.connect(document.getElementById('peer-id-input').value);
-        conn.on('data', d => {
-            if (d.type === 'grid') grid[d.x][d.y] = d.v;
-            if (d.type === 'pos') { partner.x = d.x; partner.y = d.y; partner.char = d.char; }
-        });
+        const targetId = document.getElementById('peer-id-input').value;
+        conn = peer.connect(targetId);
+        conn.on('open', () => { document.getElementById('conn-success').style.display = 'block'; });
+        conn.on('data', d => { if(grid[d.x]) grid[d.x][d.y] = d.v; });
     }
 
-    window.onkeydown = e => {
-        keys[e.code] = true;
-        if (e.code === 'Space' && player.jumps < 2) {
-            player.vy = -7;
-            player.jumps++;
-        }
-    };
-    window.onkeyup = e => keys[e.code] = false;
-
     function update() {
-        // Sand Physics
         let next = grid.map(col => [...col]);
         for (let x = 0; x < width; x++) {
             for (let y = height - 1; y >= 0; y--) {
                 let type = grid[x][y]; if (!type) continue;
-                if (colors.wood.includes(type) || colors.tree.includes(type)) continue;
-                if (y < height - 1 && !grid[x][y+1]) { next[x][y+1] = type; next[x][y] = 0; }
+                
+                const isStatic = colors.wood.includes(type) || colors.tree.includes(type);
+                const isFluid = colors.water.includes(type) || colors.lava.includes(type);
+                const isFire = colors.fire.includes(type);
+                const isBurnable = colors.tree.includes(type) || colors.grass.includes(type) || colors.flower.includes(type) || colors.wood.includes(type);
+
+                if (isStatic) continue;
+
+                // Fire & Burning Logic
+                if (isFire || colors.lava.includes(type)) {
+                    if (Math.random() < 0.04) smoke.push({x: x*cellSize, y: y*cellSize, l: 1.0});
+                    [[-1,0],[1,0],[0,-1],[0,1]].forEach(([ox, oy]) => {
+                        let nx = x+ox, ny = y+oy;
+                        if (nx>=0 && nx<width && ny>=0 && ny<height) {
+                            let target = grid[nx][ny];
+                            // If fire touches bio material, it turns into fire (burns it)
+                            if ((colors.tree.includes(target) || colors.grass.includes(target) || colors.flower.includes(target)) && Math.random() < 0.1) {
+                                next[nx][ny] = colors.fire[0];
+                            }
+                        }
+                    });
+                    // Fire consumes itself/material over time
+                    if (isFire && Math.random() < 0.1) next[x][y] = 0;
+                }
+
+                // Gravity System
+                if (y < height - 1) {
+                    if (!grid[x][y+1]) {
+                        next[x][y+1] = type; next[x][y] = 0;
+                    } else {
+                        let d = Math.random() < 0.5 ? 1 : -1;
+                        if (x+d >=0 && x+d < width && !grid[x+d][y+1]) {
+                            next[x+d][y+1] = type; next[x][y] = 0;
+                        } else if (isFluid && x+d >=0 && x+d < width && !grid[x+d][y]) {
+                            next[x+d][y] = type; next[x][y] = 0;
+                        }
+                    }
+                }
             }
         }
         grid = next;
-
-        // Player Movement
-        if (keys['ArrowLeft'] || keys['KeyA']) player.vx = -4;
-        else if (keys['ArrowRight'] || keys['KeyD']) player.vx = 4;
-        else player.vx *= 0.8;
-
-        player.vy += 0.4; // Gravity
-        player.x += player.vx;
-        player.y += player.vy;
-
-        // Collision with Grid
-        let gx = Math.floor(player.x / cellSize);
-        let gy = Math.floor((player.y + player.h) / cellSize);
-        
-        if (gx >= 0 && gx < width && gy >= 0 && gy < height && grid[gx][gy]) {
-            player.y = gy * cellSize - player.h;
-            player.vy = 0;
-            player.jumps = 0;
-        }
-
-        // Keep in bounds
-        if (player.x < 0) player.x = 0;
-        if (player.x > canvas.width - player.w) player.x = canvas.width - player.w;
-        if (player.y > canvas.height) { player.x = 100; player.y = 0; }
-
-        if (conn && conn.open) conn.send({ type: 'pos', x: player.x, y: player.y, char: player.char });
     }
 
     function render() {
         ctx.fillStyle = '#1e3c72'; ctx.fillRect(0,0,canvas.width,canvas.height);
-        
-        // Render World
         for (let x = 0; x < width; x++) {
             for (let y = 0; y < height; y++) {
                 if (grid[x][y]) {
@@ -166,12 +213,22 @@
                 }
             }
         }
-
-        // Render Characters
-        ctx.font = "24px serif";
-        ctx.fillText(player.char, player.x, player.y + 20);
-        ctx.fillText(partner.char, partner.x, partner.y + 20);
-
+        smoke.forEach((s, i) => {
+            s.y -= 1.5; s.l -= 0.01;
+            ctx.fillStyle = `rgba(180,180,180,${s.l})`;
+            ctx.fillRect(s.x, s.y, cellSize*2, cellSize*2);
+            if(s.l <= 0) smoke.splice(i,1);
+        });
+        birds.forEach(b => {
+            b.x += b.vx; b.y += b.vy; b.wing += 0.2;
+            if(b.x < 0 || b.x > canvas.width) b.vx *= -1;
+            if(b.y < 0 || b.y > canvas.height) b.vy *= -1;
+            ctx.fillStyle = "white";
+            ctx.fillRect(b.x, b.y, 4, 2);
+            let wOff = Math.sin(b.wing) * 4;
+            ctx.fillRect(b.x-3, b.y+wOff, 3, 1);
+            ctx.fillRect(b.x+4, b.y+wOff, 3, 1);
+        });
         update();
         requestAnimationFrame(render);
     }
@@ -180,16 +237,15 @@
         if(e.buttons !== 1) return;
         let x = Math.floor(e.clientX/cellSize), y = Math.floor(e.clientY/cellSize);
         if(x>=0 && x<width && y>=0 && y<height) {
-            let val = colors[currentElement][0];
+            let val = currentTool === 'dig' ? 0 : colors[currentElement][Math.floor(Math.random()*colors[currentElement].length)];
             grid[x][y] = val;
-            if(conn) conn.send({type: 'grid', x, y, v: val});
+            if(conn) conn.send({x, y, v: val});
         }
     };
 
-    function setEl(el) { currentElement = el; }
     function resetCanvas() { setup(); }
     window.onresize = setup;
-    setup(); selectChar('🐱'); render();
+    setup(); render();
 </script>
 </body>
 </html>
