@@ -47,6 +47,10 @@
         
         canvas { display: block; background: linear-gradient(to bottom, #1e3c72, #2a5298); cursor: crosshair; }
         .connected-status { color: #4caf50; font-size: 10px; margin-top: 5px; display: none; }
+
+        .char-select { display: flex; gap: 10px; margin-bottom: 15px; }
+        .char-btn { flex: 1; font-size: 20px; padding: 10px; background: #222; border: 2px solid #444; border-radius: 10px; cursor: pointer; color: white; }
+        .char-btn.selected { border-color: #ffd54f; background: #333; }
     </style>
 </head>
 <body>
@@ -65,6 +69,12 @@
             <button class="btn" onclick="connectToPeer()" style="flex:1">LINK</button>
         </div>
         <div id="conn-success" class="connected-status">✓ Connected to Partner</div>
+    </div>
+
+    <span class="section-label">Choose Your Character</span>
+    <div class="char-select">
+        <button class="char-btn" id="btn-cat" onclick="selectChar('🐱')">🐱</button>
+        <button class="char-btn" id="btn-dog" onclick="selectChar('🐶')">🐶</button>
     </div>
 
     <span class="section-label">Toolbox</span>
@@ -109,10 +119,20 @@
     let width = 180, grid, cellSize, height, birds = [], smoke = [], birdsOn = false;
     let currentElement = 'water', currentTool = 'pour', peer, conn, myId = "";
 
+    let player = { x: 100, y: 100, vx: 0, vy: 0, char: '🐱', jumps: 0, w: 20, h: 20, isMoving: false, isCrouching: false };
+    let partner = { x: -100, y: -100, char: '🐶', isMoving: false, h: 20 };
+    const keys = {};
+
     function setup() {
         canvas.width = window.innerWidth; canvas.height = window.innerHeight;
         cellSize = canvas.width / width; height = Math.floor(canvas.height / cellSize);
         grid = Array.from({ length: width }, () => new Array(height).fill(0));
+    }
+
+    function selectChar(c) {
+        player.char = c;
+        document.getElementById('btn-cat').classList.toggle('selected', c === '🐱');
+        document.getElementById('btn-dog').classList.toggle('selected', c === '🐶');
     }
 
     function copyMyId() {
@@ -145,62 +165,115 @@
     peer.on('connection', c => {
         conn = c;
         document.getElementById('conn-success').style.display = 'block';
-        conn.on('data', d => { if(grid[d.x]) grid[d.x][d.y] = d.v; });
+        conn.on('data', d => {
+            if (d.type === 'grid') { if(grid[d.x]) grid[d.x][d.y] = d.v; }
+            if (d.type === 'pos') { 
+                partner.x = d.x; partner.y = d.y; partner.char = d.char; 
+                partner.isMoving = d.isMoving; partner.h = d.h;
+            }
+        });
     });
 
     function connectToPeer() {
         const targetId = document.getElementById('peer-id-input').value;
         conn = peer.connect(targetId);
         conn.on('open', () => { document.getElementById('conn-success').style.display = 'block'; });
-        conn.on('data', d => { if(grid[d.x]) grid[d.x][d.y] = d.v; });
+        conn.on('data', d => {
+            if (d.type === 'grid') { if(grid[d.x]) grid[d.x][d.y] = d.v; }
+            if (d.type === 'pos') { 
+                partner.x = d.x; partner.y = d.y; partner.char = d.char; 
+                partner.isMoving = d.isMoving; partner.h = d.h;
+            }
+        });
     }
+
+    window.onkeydown = e => {
+        keys[e.code] = true;
+        if (e.code === 'Space' && player.jumps < 2) {
+            player.vy = -7;
+            player.jumps++;
+        }
+    };
+    window.onkeyup = e => keys[e.code] = false;
 
     function update() {
         let next = grid.map(col => [...col]);
         for (let x = 0; x < width; x++) {
             for (let y = height - 1; y >= 0; y--) {
                 let type = grid[x][y]; if (!type) continue;
-                
                 const isStatic = colors.wood.includes(type) || colors.tree.includes(type);
                 const isFluid = colors.water.includes(type) || colors.lava.includes(type);
                 const isFire = colors.fire.includes(type);
-                const isBurnable = colors.tree.includes(type) || colors.grass.includes(type) || colors.flower.includes(type) || colors.wood.includes(type);
-
                 if (isStatic) continue;
-
-                // Fire & Burning Logic
                 if (isFire || colors.lava.includes(type)) {
                     if (Math.random() < 0.04) smoke.push({x: x*cellSize, y: y*cellSize, l: 1.0});
                     [[-1,0],[1,0],[0,-1],[0,1]].forEach(([ox, oy]) => {
                         let nx = x+ox, ny = y+oy;
                         if (nx>=0 && nx<width && ny>=0 && ny<height) {
                             let target = grid[nx][ny];
-                            // If fire touches bio material, it turns into fire (burns it)
                             if ((colors.tree.includes(target) || colors.grass.includes(target) || colors.flower.includes(target)) && Math.random() < 0.1) {
                                 next[nx][ny] = colors.fire[0];
                             }
                         }
                     });
-                    // Fire consumes itself/material over time
                     if (isFire && Math.random() < 0.1) next[x][y] = 0;
                 }
-
-                // Gravity System
                 if (y < height - 1) {
-                    if (!grid[x][y+1]) {
-                        next[x][y+1] = type; next[x][y] = 0;
-                    } else {
+                    if (!grid[x][y+1]) { next[x][y+1] = type; next[x][y] = 0; }
+                    else {
                         let d = Math.random() < 0.5 ? 1 : -1;
-                        if (x+d >=0 && x+d < width && !grid[x+d][y+1]) {
-                            next[x+d][y+1] = type; next[x][y] = 0;
-                        } else if (isFluid && x+d >=0 && x+d < width && !grid[x+d][y]) {
-                            next[x+d][y] = type; next[x][y] = 0;
-                        }
+                        if (x+d >=0 && x+d < width && !grid[x+d][y+1]) { next[x+d][y+1] = type; next[x][y] = 0; }
+                        else if (isFluid && x+d >=0 && x+d < width && !grid[x+d][y]) { next[x+d][y] = type; next[x][y] = 0; }
                     }
                 }
             }
         }
         grid = next;
+
+        // DOWN BUTTON ACTION (Crouch & Fast Fall)
+        if (keys['ArrowDown'] || keys['KeyS']) {
+            player.h = 10; 
+            player.isCrouching = true;
+            if (player.vy > 0) player.vy += 0.8; // Fast fall
+        } else {
+            player.h = 20;
+            player.isCrouching = false;
+        }
+
+        if (keys['ArrowLeft'] || keys['KeyA']) { player.vx = -4; player.isMoving = true; }
+        else if (keys['ArrowRight'] || keys['KeyD']) { player.vx = 4; player.isMoving = true; }
+        else { player.vx *= 0.8; player.isMoving = Math.abs(player.vx) > 0.5; }
+
+        player.vy += 0.4;
+        player.x += player.vx;
+        player.y += player.vy;
+
+        let gx = Math.floor(player.x / cellSize);
+        let gy = Math.floor((player.y + player.h) / cellSize);
+        if (gx >= 0 && gx < width && gy >= 0 && gy < height && grid[gx][gy]) {
+            player.y = gy * cellSize - player.h;
+            player.vy = 0;
+            player.jumps = 0;
+        }
+
+        if (player.x < 0) player.x = 0;
+        if (player.x > canvas.width - 20) player.x = canvas.width - 20;
+        if (player.y > canvas.height) { player.y = 0; player.x = 100; }
+
+        if (conn && conn.open) conn.send({ type: 'pos', x: player.x, y: player.y, char: player.char, isMoving: player.isMoving, h: player.h });
+    }
+
+    function drawRetroLegs(x, y, h, moving) {
+        if (!moving) {
+            ctx.fillStyle = "#222"; 
+            ctx.fillRect(x + 4, y + h - 2, 2, 4);
+            ctx.fillRect(x + 14, y + h - 2, 2, 4);
+            return;
+        }
+        let cycle = Math.sin(Date.now() / 80) * 4;
+        ctx.fillStyle = "#111";
+        ctx.fillRect(x + 3, y + h - 2, 2, 5 + cycle);
+        ctx.fillRect(x + 15, y + h - 2, 2, 5 - cycle);
     }
 
     function render() {
@@ -213,12 +286,23 @@
                 }
             }
         }
+
+        // Draw Player & Partner with Legs
+        drawRetroLegs(player.x, player.y, player.h, player.isMoving);
+        ctx.font = player.isCrouching ? "18px serif" : "24px serif";
+        ctx.fillText(player.char, player.x, player.y + (player.isCrouching ? 12 : 18));
+
+        drawRetroLegs(partner.x, partner.y, partner.h, partner.isMoving);
+        ctx.font = partner.h < 20 ? "18px serif" : "24px serif";
+        ctx.fillText(partner.char, partner.x, partner.y + (partner.h < 20 ? 12 : 18));
+
         smoke.forEach((s, i) => {
             s.y -= 1.5; s.l -= 0.01;
             ctx.fillStyle = `rgba(180,180,180,${s.l})`;
             ctx.fillRect(s.x, s.y, cellSize*2, cellSize*2);
             if(s.l <= 0) smoke.splice(i,1);
         });
+
         birds.forEach(b => {
             b.x += b.vx; b.y += b.vy; b.wing += 0.2;
             if(b.x < 0 || b.x > canvas.width) b.vx *= -1;
@@ -229,6 +313,7 @@
             ctx.fillRect(b.x-3, b.y+wOff, 3, 1);
             ctx.fillRect(b.x+4, b.y+wOff, 3, 1);
         });
+
         update();
         requestAnimationFrame(render);
     }
@@ -239,13 +324,13 @@
         if(x>=0 && x<width && y>=0 && y<height) {
             let val = currentTool === 'dig' ? 0 : colors[currentElement][Math.floor(Math.random()*colors[currentElement].length)];
             grid[x][y] = val;
-            if(conn) conn.send({x, y, v: val});
+            if(conn) conn.send({type: 'grid', x, y, v: val});
         }
     };
 
     function resetCanvas() { setup(); }
     window.onresize = setup;
-    setup(); render();
+    setup(); selectChar('🐱'); render();
 </script>
 </body>
 </html>
