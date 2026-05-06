@@ -1,0 +1,205 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Nature Studio: Shared World</title>
+    <script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>
+    <style>
+        :root { --accent: #7b5e43; --panel: rgba(255, 255, 255, 0.95); }
+        body { 
+            margin: 0; overflow: hidden; font-family: 'Georgia', serif; 
+            background: linear-gradient(to bottom, #87CEEB 0%, #E0F7FA 100%); 
+        }
+        #controls {
+            position: absolute; top: 20px; left: 20px; background: var(--panel);
+            padding: 15px; border-radius: 15px; z-index: 100; 
+            box-shadow: 0 10px 30px rgba(0,0,0,0.1); border: 1px solid #d8d4cd;
+            display: flex; flex-direction: column; gap: 8px; width: 260px;
+        }
+        .palette-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 5px; }
+        .nature-btn { height: 32px; border: none; border-radius: 6px; cursor: pointer; font-size: 10px; color: white; font-weight: bold; }
+        .earth { background: #8d6e63; } .wood { background: #5d4037; }
+        .mountain { background: #90a4ae; } .tree { background: #2e7d32; }
+        .water { background: #0288d1; } .grass { background: #66bb6a; }
+        .sand { background: #ffd54f; } .lava { background: #ff7043; } .fire { background: #ff5722; }
+        .tool-btn { flex: 1; padding: 8px; border: 1px solid #ddd; border-radius: 8px; background: #f9f9f9; cursor: pointer; font-size: 11px; }
+        .tool-btn.active { background: #e0ddd5; border-color: var(--accent); font-weight: bold; }
+        canvas { display: block; touch-action: none; cursor: crosshair; }
+    </style>
+</head>
+<body>
+
+<div id="controls">
+    <div id="my-id-display" style="font-size:11px; color:#4a4a4a; font-weight:bold;">Your ID: Loading...</div>
+    <div style="display:flex; gap:5px;">
+        <input type="text" id="peer-id-input" style="flex:1; padding:6px; border:1px solid #ddd; border-radius:5px; font-size:11px;" placeholder="Partner's ID">
+        <button onclick="connectToPeer()" style="padding:6px 10px; background:#4a4a4a; color:white; border:none; border-radius:5px; cursor:pointer; font-size:11px;">Join</button>
+    </div>
+
+    <div style="font-size: 10px; font-weight: bold; color: #888;">Grain Size</div>
+    <input type="range" id="sizeSlider" min="60" max="250" value="150" onchange="changeResolution(this.value)">
+
+    <div style="display:flex; gap:5px">
+        <button id="pourBtn" class="tool-btn active" onclick="setTool('pour')">Pour</button>
+        <button id="digBtn" class="tool-btn" onclick="setTool('dig')">Shovel</button>
+    </div>
+
+    <div class="palette-grid">
+        <button class="nature-btn earth" onclick="setElement('earth')">Earth</button>
+        <button class="nature-btn wood" onclick="setElement('wood')">Wood</button>
+        <button class="nature-btn mountain" onclick="setElement('mountain')">Stone</button>
+        <button class="nature-btn grass" onclick="setElement('grass')">Grass</button>
+        <button class="nature-btn tree" onclick="setElement('tree')">Sapling</button>
+        <button class="nature-btn water" onclick="setElement('water')">Water</button>
+        <button class="nature-btn sand" onclick="setElement('sand')">Sand</button>
+        <button class="nature-btn lava" onclick="setElement('lava')">Lava</button>
+        <button class="nature-btn fire" onclick="setElement('fire')">Fire</button>
+    </div>
+    <button onclick="resetCanvas()" style="background:#e74c3c; color:white; border:none; padding:8px; border-radius:5px; cursor:pointer; font-size:11px;">Reset World</button>
+</div>
+
+<canvas id="sandCanvas"></canvas>
+
+<script>
+    const canvas = document.getElementById('sandCanvas');
+    const ctx = canvas.getContext('2d');
+    const colors = {
+        earth: ['#5d4037', '#8d6e63'], wood: ['#3e2723', '#4e342e'],
+        mountain: ['#455a64', '#78909c'], tree: ['#1b5e20', '#388e3c'],
+        water: ['#01579b', '#0288d1'], grass: ['#2e7d32', '#4caf50'],
+        sand: ['#ff8f00', '#ffc107'], lava: ['#bf360c', '#e64a19'],
+        fire: ['#ff5722', '#ffeb3b', '#ff9800'], smoke: ['#9e9e9e', '#bdbdbd']
+    };
+
+    let currentElement = 'water', currentTool = 'pour', width = 150, smokeParticles = [];
+    let cellSize, height, grid, peer, conn;
+
+    function setTool(t) {
+        currentTool = t;
+        document.getElementById('pourBtn').classList.toggle('active', t === 'pour');
+        document.getElementById('digBtn').classList.toggle('active', t === 'dig');
+    }
+    function setElement(el) { currentElement = el; setTool('pour'); }
+
+    function changeResolution(newWidth) {
+        const oldGrid = grid, oldW = width, oldH = height;
+        width = parseInt(newWidth);
+        setup(); 
+        if (oldGrid) {
+            for (let x = 0; x < oldW; x++) {
+                for (let y = 0; y < oldH; y++) {
+                    if (oldGrid[x][y] !== 0) {
+                        let nx = Math.floor((x / oldW) * width), ny = Math.floor((y / oldH) * height);
+                        if (grid[nx]) grid[nx][ny] = oldGrid[x][y];
+                    }
+                }
+            }
+        }
+    }
+
+    function setup() {
+        canvas.width = window.innerWidth; canvas.height = window.innerHeight;
+        cellSize = canvas.width / width; height = Math.floor(canvas.height / cellSize);
+        if (!grid) grid = Array.from({ length: width }, () => Array(height).fill(0));
+    }
+
+    function resetCanvas() { grid = Array.from({ length: width }, () => Array(height).fill(0)); smokeParticles = []; }
+
+    peer = new Peer();
+    peer.on('open', (id) => { document.getElementById('my-id-display').innerText = "Your ID: " + id; });
+    peer.on('connection', (c) => { 
+        conn = c; 
+        conn.on('data', d => { if(grid[d.x]) grid[d.x][d.y] = d.v; });
+        alert("Andrey has joined!");
+    });
+
+    function connectToPeer() { 
+        const id = document.getElementById('peer-id-input').value;
+        conn = peer.connect(id); 
+        conn.on('open', () => alert("Connected to Andrey's World!"));
+        conn.on('data', d => { if(grid[d.x]) grid[d.x][d.y] = d.v; });
+    }
+
+    function draw() {
+        ctx.clearRect(0, 0, canvas.width, canvas.height); 
+        let nextGrid = grid.map(col => [...col]);
+        
+        for (let x = 0; x < width; x++) {
+            for (let y = height - 1; y >= 0; y--) {
+                let type = grid[x][y]; if (type === 0) continue;
+                let isWater = colors.water.includes(type), isLava = colors.lava.includes(type);
+                let isFire = colors.fire.includes(type), isWood = colors.wood.includes(type);
+                let isPlant = colors.tree.includes(type) || colors.grass.includes(type) || type === '#5D4037';
+                let isStatic = isWood || colors.mountain.includes(type) || isPlant;
+
+                if (isFire || isLava) {
+                    if (Math.random() < 0.05) smokeParticles.push({x: x*cellSize, y: y*cellSize, vx: (Math.random()-0.5), vy: -1, life: 1.0});
+                    [[-1,0],[1,0],[0,-1],[0,1]].forEach(([ox, oy]) => {
+                        let nx = x + ox, ny = y + oy;
+                        if (nx >= 0 && nx < width && ny >= 0 && ny < height) {
+                            let target = grid[nx][ny];
+                            if (colors.water.includes(target)) {
+                                nextGrid[x][y] = isLava ? colors.mountain[0] : 0;
+                                nextGrid[nx][ny] = 0;
+                            } else if ((isWood || isPlant) && Math.random() < 0.02) {
+                                nextGrid[nx][ny] = colors.fire[Math.floor(Math.random()*3)];
+                            }
+                        }
+                    });
+                    if (isFire && Math.random() < 0.01) nextGrid[x][y] = 0;
+                }
+
+                if (isStatic) continue;
+                if (y < height - 1) {
+                    if (grid[x][y+1] === 0) {
+                        nextGrid[x][y+1] = type; nextGrid[x][y] = 0;
+                    } else {
+                        let dir = Math.random() < 0.5 ? 1 : -1;
+                        if (x+dir >= 0 && x+dir < width && grid[x+dir][y+1] === 0) {
+                            nextGrid[x+dir][y+1] = type; nextGrid[x][y] = 0;
+                        } else if ((isWater || isLava) && x+dir >= 0 && x+dir < width && grid[x+dir][y] === 0) {
+                            nextGrid[x+dir][y] = type; nextGrid[x][y] = 0;
+                        }
+                    }
+                }
+            }
+        }
+        grid = nextGrid;
+
+        for (let x = 0; x < width; x++) {
+            for (let y = 0; y < height; y++) {
+                if (grid[x][y] !== 0) {
+                    ctx.fillStyle = grid[x][y];
+                    ctx.fillRect(x * cellSize, y * cellSize, cellSize, cellSize);
+                }
+            }
+        }
+
+        smokeParticles.forEach((p, i) => {
+            p.x += p.vx; p.y += p.vy; p.life -= 0.01;
+            ctx.fillStyle = `rgba(100,100,100,${p.life})`;
+            ctx.fillRect(p.x, p.y, cellSize * 0.8, cellSize * 0.8);
+            if (p.life <= 0) smokeParticles.splice(i, 1);
+        });
+
+        requestAnimationFrame(draw);
+    }
+
+    function handleInput(e) {
+        if (e.buttons === 1) {
+            let x = Math.floor(e.clientX / cellSize), y = Math.floor(e.clientY / cellSize);
+            if (x >= 0 && x < width && y >= 0 && y < height) {
+                if (currentTool === 'dig') { grid[x][y] = 0; }
+                else {
+                    let v = colors[currentElement][Math.floor(Math.random()*2)];
+                    grid[x][y] = v;
+                    if (conn) conn.send({ x, y, v });
+                }
+            }
+        }
+    }
+    canvas.addEventListener('mousedown', handleInput); canvas.addEventListener('mousemove', handleInput);
+    setup(); draw();
+</script>
+</body>
+</html>
